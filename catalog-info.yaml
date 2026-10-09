@@ -1,0 +1,21 @@
+# For more information about the available options please visit: http://go/catalog-info (VPN required)
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  annotations:
+    github.com/project-slug: Unity-Technologies/mdi-sample
+  name: mdi-sample
+  description: "Official sample project for Unity's Multi Draw Indirect API"
+  labels:
+    costcenter: "5054"
+  tags:
+    - planned-public
+    - enterprise
+  links:
+    - url: https://unity.slack.com/messages/C0BDG7NTWF8/
+      title: "#devs-multidrawindirect"
+      icon: chat
+spec:
+  type: other
+  lifecycle: experimental
+  owner: Unity-Technologies/gfx-device

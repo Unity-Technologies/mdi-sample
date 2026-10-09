@@ -1,0 +1,284 @@
+#pragma kernel SubdrawCulling
+#pragma kernel InstanceCulling
+#pragma kernel WriteDrawArgs
+#pragma kernel CompactDrawArgs
+
+StructuredBuffer<float4> positionsBuffer;   // world x,y,z + yaw (w); Y already conformed at bake
+
+RWStructuredBuffer<float4> culledPositions;
+RWStructuredBuffer<uint> culledCounts;     
+uint drawIdNear;                           
+uint drawIdFar;                            
+uint instanceCapacity;                     
+
+float4 gridParams;   // xy = field min (x, z), zw = 1 / cell size
+uint cellDim;        // cells per axis
+uint cellCount;      // cellDim * cellDim
+
+// Mirrors CellFromPosition() in ProceduralRenderingFeature.cs
+uint CellFromPosition(float3 pos)
+{
+    int cx = clamp((int)floor((pos.x - gridParams.x) * gridParams.z), 0, (int)cellDim - 1);
+    int cz = clamp((int)floor((pos.z - gridParams.y) * gridParams.w), 0, (int)cellDim - 1);
+    return (uint)(cz * (int)cellDim + cx);
+}
+
+
+uint numInstances;     // count in positionsBuffer
+float3 cullOrigin;     // camera world position (ring center + LOD distance origin)
+float cullRadius;      // in meters
+uint cullEnabled;      // 1 = ring cull, 0 = draw every instance
+float lodDistance;     // in meters
+float lodBlend;        // width (meters) of the LOD cross-fade band (0 = hard switch)
+float4 frustumPlanes[6]; // camera frustum planes (inward normals: xyz=n, w=d)
+float frustumPadding;    // pad to avoid edge pop
+
+// Cell visibility
+#define CELL_OUTSIDE  0u   // no part of the cell is visible: subdraw is culled entirely
+#define CELL_PARTIAL  1u   // the cell straddles an edge: subdraw is frustum and distance-tested
+#define CELL_INSIDE   2u   // wholly visible: subdraw is submitted and skips testing
+
+RWStructuredBuffer<uint> cellVisible;
+float4 cellExtents;   // xy = cell size (x, z), zw = field min/max Y
+
+[numthreads(64, 1, 1)]
+void SubdrawCulling(uint3 id : SV_DispatchThreadID)
+{
+    uint cell = id.x;
+    if (cell >= cellCount) return;
+
+    if (cullEnabled == 0)
+    {
+        cellVisible[cell] = CELL_INSIDE;  
+        return;
+    }
+
+    uint cx = cell % cellDim;
+    uint cz = cell / cellDim;
+    float3 mn = float3(gridParams.x + cx * cellExtents.x, cellExtents.z,
+                       gridParams.y + cz * cellExtents.y);
+    float3 mx = mn + float3(cellExtents.x, cellExtents.w - cellExtents.z, cellExtents.y);
+    float3 centre = (mn + mx) * 0.5;
+    float3 extent = (mx - mn) * 0.5;
+
+    uint state = CELL_INSIDE;
+
+    float2 mnXZ = float2(mn.x, mn.z), mxXZ = float2(mx.x, mx.z);
+    float2 nearD = max(max(mnXZ - cullOrigin.xz, float2(0.0, 0.0)), cullOrigin.xz - mxXZ);
+    if (dot(nearD, nearD) > cullRadius * cullRadius)
+    {
+        cellVisible[cell] = CELL_OUTSIDE;  
+        return;
+    }
+    float2 farD = max(abs(mnXZ - cullOrigin.xz), abs(mxXZ - cullOrigin.xz));
+    if (dot(farD, farD) > cullRadius * cullRadius) state = CELL_PARTIAL;
+
+    [unroll]
+    for (int p = 0; p < 6; p++)
+    {
+        float3 n = frustumPlanes[p].xyz;
+        float dist = dot(n, centre) + frustumPlanes[p].w;
+        float r = dot(extent, abs(n));
+        if (dist + r < -frustumPadding)
+        {
+            cellVisible[cell] = CELL_OUTSIDE;   // wholly behind this plane
+            return;
+        }
+        if (dist - r < -frustumPadding) state = CELL_PARTIAL;
+    }
+
+    cellVisible[cell] = state;
+}
+
+// Debug HUD only
+RWStructuredBuffer<uint> lodTally;   
+RWStructuredBuffer<uint> preCullCounts;   
+uint debugHUD;                       
+
+float time;
+float4 wind;            // xyz = direction, w = strength
+float windWaveLength;   // meters between gust fronts
+float windWaveSpeed;    // m/s the fronts travel
+float windGustiness;    // 0 = steady lean, 1 = fully slack between gusts
+float windSway;         // per-clump idle flutter amount
+float windSwaySpeed;    // flutter cycles per second
+float windPatchiness;   // how much the fronts break into finite cells
+
+RWStructuredBuffer<uint2> culledWind;
+
+uint PackHalf2(float2 v) { return f32tof16(v.x) | (f32tof16(v.y) << 16); }
+
+// Stable per-clump random in [0,1) from a world XZ position, used for height variance)
+float Hash21(float2 p)
+{
+    p = frac(p * float2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return frac(p.x * p.y);
+}
+
+float4 ClumpWind(float2 clumpXZ)
+{
+    float t = time;
+    float2 wdir = normalize(wind.xz + 1e-5);
+    float2 wside = float2(-wdir.y, wdir.x);       // across the wind, for the sway wobble
+
+    float along = dot(clumpXZ, wdir);
+    float k1 = 6.2831853 / max(windWaveLength, 0.1);
+    float k2 = 6.2831853 / max(windWaveLength * 0.37, 0.1);
+    float gust = 0.5 + 0.5 * (0.72 * sin(k1 * (along - windWaveSpeed * t))
+                            + 0.28 * sin(k2 * (along - windWaveSpeed * 1.31 * t) + 1.7));
+
+    float across = dot(clumpXZ, wside);
+    float kc = 6.2831853 / max(windWaveLength * 2.6, 0.1);
+    gust = saturate(gust * lerp(1.0, 0.5 + 0.5 * sin(kc * across + t * 0.37), windPatchiness));
+
+    // Per-clump flutter: two octaves on a hash-derived phase
+    float swayPhase = Hash21(clumpXZ + 3.7) * 6.2831853;
+    float sway = sin(t * windSwaySpeed + swayPhase)
+               + 0.5 * sin(t * windSwaySpeed * 2.3 + swayPhase * 1.7);
+
+    // A steady lean that the gusts modulate, plus the flutter across the wind.
+    float bend = wind.w * lerp(1.0, gust, windGustiness) * 0.35;
+    float2 windXZ = wdir * bend + wside * (sway * windSway * wind.w * 0.06);
+
+    return float4(windXZ, gust, (Hash21(clumpXZ) - 0.5) * 2.0);
+}
+
+void EmitInstance(uint drawId, float3 posWS, uint yawSinCos, float4 windGustHash)
+{
+    uint slot;
+    InterlockedAdd(culledCounts[drawId], 1u, slot);
+    if (slot >= instanceCapacity) return;
+
+    uint i = drawId * instanceCapacity + slot;
+    culledPositions[i] = float4(posWS, asfloat(yawSinCos));
+    culledWind[i] = uint2(PackHalf2(windGustHash.xy), PackHalf2(windGustHash.zw));
+}
+
+[numthreads(64, 1, 1)]
+void InstanceCulling(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numInstances) return;
+
+    float4 pos = positionsBuffer[id.x];   // world position, already terrain-conformed at bake
+
+    uint cell = CellFromPosition(pos.xyz);
+
+    if (debugHUD != 0)
+    {
+        float2 td = pos.xz - cullOrigin.xz;
+        float tdist = length(td);
+        float thb = lodBlend * 0.5;
+        uint ignored;
+        uint nearSlot = drawIdNear * cellCount + cell;
+        uint farSlot  = drawIdFar  * cellCount + cell;
+        if (tdist < lodDistance - thb)      { InterlockedAdd(lodTally[0], 1u, ignored);
+                                              InterlockedAdd(preCullCounts[nearSlot], 1u, ignored); }
+        else if (tdist < lodDistance + thb) { InterlockedAdd(lodTally[0], 1u, ignored);
+                                              InterlockedAdd(lodTally[1], 1u, ignored);
+                                              InterlockedAdd(preCullCounts[nearSlot], 1u, ignored);
+                                              InterlockedAdd(preCullCounts[farSlot], 1u, ignored); }
+        else                                { InterlockedAdd(lodTally[1], 1u, ignored);
+                                              InterlockedAdd(preCullCounts[farSlot], 1u, ignored); }
+    }
+
+    // Test the cell visibility and early outside frustum
+    uint cellState = cellVisible[cell];
+    if (cellState == CELL_OUTSIDE) return;
+
+    float2 d = pos.xz - cullOrigin.xz;
+    float distSq = dot(d, d);
+
+    bool visible = (cellState == CELL_INSIDE);
+    if (!visible)
+    {
+        // Only cells straddling an edge pay for per-instance testing
+        visible = distSq < cullRadius * cullRadius;
+        [unroll]
+        for (int p = 0; p < 6; p++)
+            if (dot(frustumPlanes[p].xyz, pos.xyz) + frustumPlanes[p].w < -frustumPadding) {
+                visible = false;   // outside this plane (with padding) => culled
+            }
+    }
+
+    if (visible)
+    {
+        // The clump's cell picks the sub-draw within its (layer, LOD).
+        uint nearDraw = drawIdNear * cellCount + cell;
+        uint farDraw  = drawIdFar  * cellCount + cell;
+
+        float4 windGustHash = ClumpWind(pos.xz);
+        float sinYaw, cosYaw;
+        sincos(pos.w, sinYaw, cosYaw);
+        uint yawSinCos = PackHalf2(float2(sinYaw, cosYaw));
+
+        float dist = sqrt(distSq);
+        float hb = lodBlend * 0.5;
+        if (dist < lodDistance - hb) { // draw near LOD
+            EmitInstance(nearDraw, pos.xyz, yawSinCos, windGustHash);
+        }
+        else if (dist < lodDistance + hb) {  // draw both LODs and cross fade
+            EmitInstance(nearDraw, pos.xyz, yawSinCos, windGustHash);
+            EmitInstance(farDraw, pos.xyz, yawSinCos, windGustHash);
+        }
+        else {
+            EmitInstance(farDraw, pos.xyz, yawSinCos, windGustHash); // draw far LOD
+        }
+    }
+}
+
+#define ARGS_PER_DRAW                 5u
+#define ARG_INDEX_COUNT_PER_INSTANCE  0u   // indices of this draw's mesh, per instance
+#define ARG_INSTANCE_COUNT            1u   // instances to draw (0 = nothing, but still walked)
+#define ARG_START_INDEX               2u   // first index, i.e. this LOD's range in the shared buffer
+#define ARG_BASE_VERTEX_INDEX         3u   // added to every index before the vertex fetch
+#define ARG_START_INSTANCE            4u   // first instance id
+
+RWStructuredBuffer<uint> drawArgs;              // ARGS_PER_DRAW uints per (layer, LOD, cell)
+StructuredBuffer<uint> indexCountPerInstance;   // static per draw: indices in its mesh
+StructuredBuffer<uint> startIndex;              // static per draw: its range in the shared index buffer
+uint drawCount;
+
+RWStructuredBuffer<uint> drawIdTable;
+
+[numthreads(64, 1, 1)]
+void WriteDrawArgs(uint3 id : SV_DispatchThreadID)
+{
+    uint drawId = id.x;
+    if (drawId >= drawCount) return;
+
+    uint layerLod = drawId / max(cellCount, 1u);
+
+    uint o = drawId * ARGS_PER_DRAW;
+    drawArgs[o + ARG_INDEX_COUNT_PER_INSTANCE] = indexCountPerInstance[layerLod];
+    drawArgs[o + ARG_INSTANCE_COUNT]           = min(culledCounts[drawId], instanceCapacity);
+    drawArgs[o + ARG_START_INDEX]              = startIndex[layerLod];
+    drawArgs[o + ARG_BASE_VERTEX_INDEX]        = 0u;   
+    drawArgs[o + ARG_START_INSTANCE]           = 0u;
+    drawIdTable[drawId] = drawId;                  
+}
+
+RWStructuredBuffer<uint> mdiArgs;        // compacted args
+RWStructuredBuffer<uint> mdiDrawCount;   // single uint read by the draw
+
+[numthreads(64, 1, 1)]
+void CompactDrawArgs(uint3 id : SV_DispatchThreadID)
+{
+    uint drawId = id.x;
+    if (drawId >= drawCount) return;
+
+    uint src = drawId * ARGS_PER_DRAW;
+    if (drawArgs[src + ARG_INDEX_COUNT_PER_INSTANCE] == 0u ||
+        drawArgs[src + ARG_INSTANCE_COUNT] == 0u) return;   // no geometry or no instances
+
+    uint slot;
+    InterlockedAdd(mdiDrawCount[0], 1u, slot);
+
+    // The compacted slot no longer matches the draw id, so record the mapping the shader needs.
+    drawIdTable[slot] = drawId;
+
+    uint dst = slot * ARGS_PER_DRAW;
+    [unroll]
+    for (uint i = 0u; i < ARGS_PER_DRAW; i++)
+        mdiArgs[dst + i] = drawArgs[src + i];
+}

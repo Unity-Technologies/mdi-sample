@@ -1,0 +1,98 @@
+# Unity project: line-ending normalization, plus Git LFS for binary assets.
+#
+# This file must be committed BEFORE the assets it describes. Git applies filters at `git add` time,
+# so anything staged earlier goes in as an ordinary blob and stays that way in history — fixing it
+# afterwards means rewriting with `git lfs migrate`.
+
+# Normalize line endings for anything Git detects as text.
+* text=auto
+
+# ---- Unity text assets ------------------------------------------------------------------
+# These are YAML/source and must NOT go to LFS: Unity, code review and merges all need them
+# readable. eol=lf keeps them stable across machines.
+*.cs                text diff=csharp eol=lf
+*.shader            text eol=lf
+*.compute           text eol=lf
+*.hlsl              text eol=lf
+*.cginc             text eol=lf
+*.shadergraph       text eol=lf
+*.shadersubgraph    text eol=lf
+*.meta              text eol=lf
+*.unity             text eol=lf
+*.prefab            text eol=lf
+*.asset             text eol=lf
+*.mat               text eol=lf
+*.anim              text eol=lf
+*.controller        text eol=lf
+*.physicMaterial    text eol=lf
+*.preset            text eol=lf
+*.asmdef            text eol=lf
+*.mtl               text eol=lf
+*.json              text eol=lf
+*.md                text eol=lf
+*.txt               text eol=lf
+*.py                text eol=lf
+*.yaml              text eol=lf
+*.yml               text eol=lf
+
+# ---- Git LFS ----------------------------------------------------------------------------
+# Patterns are case sensitive, hence the uppercase duplicates for the extensions that
+# commonly arrive from other tools.
+
+# Images (the bulk of this project: ~210 MB of PNG plus a 26 MB PSD)
+*.png   filter=lfs diff=lfs merge=lfs -text
+*.PNG   filter=lfs diff=lfs merge=lfs -text
+*.jpg   filter=lfs diff=lfs merge=lfs -text
+*.JPG   filter=lfs diff=lfs merge=lfs -text
+*.jpeg  filter=lfs diff=lfs merge=lfs -text
+*.psd   filter=lfs diff=lfs merge=lfs -text
+*.PSD   filter=lfs diff=lfs merge=lfs -text
+*.psb   filter=lfs diff=lfs merge=lfs -text
+*.tga   filter=lfs diff=lfs merge=lfs -text
+*.TGA   filter=lfs diff=lfs merge=lfs -text
+*.tif   filter=lfs diff=lfs merge=lfs -text
+*.tiff  filter=lfs diff=lfs merge=lfs -text
+*.exr   filter=lfs diff=lfs merge=lfs -text
+*.hdr   filter=lfs diff=lfs merge=lfs -text
+*.bmp   filter=lfs diff=lfs merge=lfs -text
+*.gif   filter=lfs diff=lfs merge=lfs -text
+*.avif  filter=lfs diff=lfs merge=lfs -text
+
+# Models. .obj and .gltf are technically text, but they are generated exports nobody reads as
+# a diff and they get large fast, so they go to LFS with everything else.
+*.fbx   filter=lfs diff=lfs merge=lfs -text
+*.FBX   filter=lfs diff=lfs merge=lfs -text
+*.obj   filter=lfs diff=lfs merge=lfs -text
+*.OBJ   filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text
+*.dae   filter=lfs diff=lfs merge=lfs -text
+*.3ds   filter=lfs diff=lfs merge=lfs -text
+*.gltf  filter=lfs diff=lfs merge=lfs -text
+*.glb   filter=lfs diff=lfs merge=lfs -text
+*.bin   filter=lfs diff=lfs merge=lfs -text
+
+# Audio / video
+*.wav   filter=lfs diff=lfs merge=lfs -text
+*.mp3   filter=lfs diff=lfs merge=lfs -text
+*.ogg   filter=lfs diff=lfs merge=lfs -text
+*.aif   filter=lfs diff=lfs merge=lfs -text
+*.aiff  filter=lfs diff=lfs merge=lfs -text
+*.mp4   filter=lfs diff=lfs merge=lfs -text
+*.mov   filter=lfs diff=lfs merge=lfs -text
+*.webm  filter=lfs diff=lfs merge=lfs -text
+
+# Fonts
+*.ttf   filter=lfs diff=lfs merge=lfs -text
+*.otf   filter=lfs diff=lfs merge=lfs -text
+
+# Archives and native binaries
+*.zip           filter=lfs diff=lfs merge=lfs -text
+*.7z            filter=lfs diff=lfs merge=lfs -text
+*.rar           filter=lfs diff=lfs merge=lfs -text
+*.unitypackage  filter=lfs diff=lfs merge=lfs -text
+*.dll           filter=lfs diff=lfs merge=lfs -text
+*.so            filter=lfs diff=lfs merge=lfs -text
+*.dylib         filter=lfs diff=lfs merge=lfs -text
+*.bundle        filter=lfs diff=lfs merge=lfs -text
+*.a             filter=lfs diff=lfs merge=lfs -text
+*.aar           filter=lfs diff=lfs merge=lfs -text
