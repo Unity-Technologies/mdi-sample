@@ -80,27 +80,7 @@ MonoBehaviour:
       - rid: 5647217477112823866
       - rid: 5647217477112823867
     m_RuntimeSettings:
-      m_List:
-      - rid: 6852985685364965378
-      - rid: 6852985685364965380
-      - rid: 6852985685364965381
-      - rid: 6852985685364965384
-      - rid: 6852985685364965392
-      - rid: 6852985685364965394
-      - rid: 8712630790384254976
-      - rid: 2081735172055367680
-      - rid: 2081735172324327424
-      - rid: 5920317119815745664
-      - rid: 2854143735658971137
-      - rid: 6551186421963292673
-      - rid: 6551186421963292674
-      - rid: 6551186421963292676
-      - rid: 6551186421963292678
-      - rid: 6551186745797115904
-      - rid: 5647217375035260928
-      - rid: 5647217375035260929
-      - rid: 5647217477112823866
-      - rid: 5647217477112823867
+      m_List: []
   m_AssetVersion: 15
   m_ObsoleteDefaultVolumeProfile: {fileID: 0}
   m_RenderingLayerNames:
@@ -210,7 +190,6 @@ MonoBehaviour:
       data:
         m_Version: 1
         m_DepthBiasMode: 0
-        m_NormalBiasMode: 0
     - rid: 5647217375035260931
       type: {class: LegacyShadowGeometryGenerator, ns: UnityEngine.Rendering.Universal, asm: Unity.RenderPipelines.Universal.2D.Runtime}
       data: 
