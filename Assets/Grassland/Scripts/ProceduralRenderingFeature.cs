@@ -114,7 +114,8 @@ class ProceduralPass : ScriptableRenderPass
     //   supportsMultiDrawIndirect            — one draw call submits all sub-draws
     //   supportsMultiDrawIndirectCountBuffer — the GPU also controls how many subdraws are submitted
     // When neither is supported, submit one indirect draw per (layer, LOD, cell) for portability
-    private bool UseMultiDraw => SystemInfo.supportsMultiDrawIndirect;
+    private bool UseMultiDraw => SystemInfo.supportsMultiDrawIndirect &&
+                                 SystemInfo.graphicsDeviceType == GraphicsDeviceType.Vulkan;
     private bool SupportsCountBuffer => UseMultiDraw && SystemInfo.supportsMultiDrawIndirectCountBuffer;
     private bool UseCountBuffer => SupportsCountBuffer && (volume == null || volume.mdiCountBuffer);
     private int instanceCapacity;

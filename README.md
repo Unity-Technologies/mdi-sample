@@ -35,6 +35,18 @@ it still runs (and looks identical) everywhere.
 
 The "Debug HUD" toggle on the GrasslandVolume shows the number of drawn (and culled) sub-draws and instances.
 
+### Rebake the texture array when switching platforms
+
+The foliage textures are packed into one baked `Texture2DArray` (`Assets/Grassland/Textures/Grass_LayerTextures.asset`),
+which keeps the compressed format of the build target that was active when it was baked. It is not recompressed per
+platform, so an array baked for Android (ASTC) does not sample on most desktop GPUs, and the textured foliage (the
+flowers) is clipped away.
+
+The project rebakes it automatically whenever the active platform changes, as long as the MDI-Demo scene is open.
+If the scene was not open when you switched, open it and run **Grassland > Bake Texture Array** before building.
+
+On first open the project switches to the Android build profile.
+
 
 ## Demo project
 

@@ -52,6 +52,7 @@ Shader "Unlit/ParticleShader"
             #pragma multi_compile_fog
             #pragma require multidrawindirect // This also defines SHADER_REQUIRE_MULTIDRAWINDIRECT.
             #pragma use_dxc
+            #pragma only_renderers vulkan
             #include "ParticleShaderCore.hlsl"
             ENDHLSL
         }
