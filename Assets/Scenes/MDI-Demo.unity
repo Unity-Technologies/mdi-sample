@@ -243,7 +243,7 @@ MonoBehaviour:
   cellCount: 64
   gpuCulling: 1
   debugLod: 0
-  debugHud: 0
+  debugHud: 1
   debugFrameTiming: 1
   mdiCountBuffer: 1
   wind: {x: 1, y: -0.2, z: 0.3, w: 2.5}
