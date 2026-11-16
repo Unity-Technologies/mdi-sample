@@ -10,7 +10,7 @@ Indirect draw buffers can be accessed on the GPU via compute shaders. This is us
 
 
 ## Requirements
-- Unity 6000.7 or later, including `SystemInfo.supportsMultiDrawIndirectCountBuffer`
+- Unity 6000.7.0b9 or later, including `SystemInfo.supportsMultiDrawIndirectCountBuffer`
 
 ## Platform Support
 
@@ -21,8 +21,9 @@ MDI support is limited to the Unity Graphics Kernel (UGK) targeting Vulkan.
 | Vulkan on UGK                  | with the device's `multiDrawIndirect` feature | additionally with `VK_KHR_draw_indirect_count` |
 | Anything else (Metal, GLES, …) | no  | no  |
 
-UGK is opt-in in Unity 6.7 beta. Pass the `-force-ugk` flag when running the build Android Player.
+UGK is opt-in since Unity 6.7b. It is enabled for this project through the Player Settings (Edit -> Project Settings -> Player -> Other Settings -> Rendering -> Graphics APIs).
 
+You can also use the `-force-ugk` flag when launching the Android Player build:
 - Android: `adb shell am start -n <package>/com.unity3d.player.UnityPlayerActivity -e unity "-force-ugk"`
 
 Where the device reports no MDI support, the sample falls back to one indirect draw per foliage cell and LOD, so
@@ -254,7 +255,7 @@ The pixel stage discards a fraction of each LOD using a Bayer dithering pattern 
 
   float LodDitherThreshold(float2 pixel)
   {
-      int2 p = int2(fmod(pixel, 4.0));
+      uint2 p = uint2(pixel) & 3u;
       return _Bayer4x4[p.y * 4 + p.x] + (0.5 / 16.0);
   }
 
