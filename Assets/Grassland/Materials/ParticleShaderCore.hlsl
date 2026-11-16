@@ -129,7 +129,7 @@
 
             float LodDitherThreshold(float2 pixel)
             {
-                int2 p = int2(fmod(pixel, 4.0));
+                uint2 p = uint2(pixel) & 3u;
                 return _Bayer4x4[p.y * 4 + p.x] + (0.5 / 16.0);
             }
 
